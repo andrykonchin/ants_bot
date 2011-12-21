@@ -1,3 +1,4 @@
+require 'rubygems'
 require 'logger'
 
 class AazBotAi
@@ -23,16 +24,37 @@ class AazBotAi
 
   def next_directions(ai)
     {}.tap do |directions|
-      ai.my_ants.each do |ant|
-        [:N, :E, :S, :W].each do |dir|
-          loc = next_location(ant, dir)
-          if unoccupied_location?(loc) && !planed_location?(loc, directions)
-            directions[ant] = dir
-            break
+      distances = []
+      foods(ai).each do |food|
+        distances.concat ai.my_ants.map { |ant| { :dist => distance(ant, food), :food => food, :ant => ant } }
+      end
+
+      aimed_food = {}
+      sorted_distances = distances.sort_by { |el| el[:dist] }
+      sorted_distances.each do |move|
+
+        ant = move[:ant]
+        food = move[:food]
+
+        if !aimed_food.keys.include?(food) && !aimed_food.values.include?(ant)
+          directions_for(ant, food).each do |dir|
+            if try_to_occupied(ant, dir, directions)
+              aimed_food[food] = ant
+              break
+            end
           end
         end
       end
     end
+  end
+
+  def try_to_occupied(ant, dir, directions)
+    loc = next_location(ant, dir)
+    if unoccupied_location?(loc) && !planed_location?(loc, directions)
+      directions[ant] = dir
+      return true
+    end
+    false
   end
 
   def move_ants_to(directions)
@@ -51,5 +73,22 @@ class AazBotAi
 
   def next_location(ant, dir)
     ant.square.neighbor(dir)
+  end
+
+  def foods(ai)
+    ai.map.flatten.select(&:food?)
+  end
+
+  def distance(loc1, loc2)
+    Math.hypot(loc1.col - loc2.col, loc1.row - loc2.row)
+  end
+
+  def directions_for(ant, food)
+    [].tap do |result|
+      result << :N if ant.row > food.row
+      result << :S if ant.row < food.row
+      result << :W if ant.col > food.col
+      result << :E if ant.col < food.col
+    end
   end
 end
