@@ -34,6 +34,10 @@ class Ant
 	def order direction
 		@ai.order self, direction
 	end
+
+  def inspect
+    "Col #{@square.col}, Row #{@square.row}"
+  end
 end
 
 # Represent a single field of the map.
@@ -81,6 +85,10 @@ class Square
 		
 		return @ai.map[row][col]
 	end
+
+  def inspect
+    "Col #{@col}, Row #{@row}"
+  end
 end
 
 class AI
