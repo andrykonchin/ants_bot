@@ -32,7 +32,6 @@ class AazBotAi
       aimed_food = {}
       sorted_distances = distances.sort_by { |el| el[:dist] }
       sorted_distances.each do |move|
-
         ant = move[:ant]
         food = move[:food]
 
@@ -40,6 +39,16 @@ class AazBotAi
           directions_for(ant, food).each do |dir|
             if try_to_occupied(ant, dir, directions)
               aimed_food[food] = ant
+              break
+            end
+          end
+        end
+      end
+
+      my_ants_in_hill(ai).each do |ant|
+        unless aimed_food.values.include?(ant)
+          [:N, :S, :W, :E].each do |dir|
+            if try_to_occupied(ant, dir, directions)
               break
             end
           end
@@ -64,7 +73,7 @@ class AazBotAi
   end
 
   def unoccupied_location?(loc)
-    !loc.water? && !loc.food? && !loc.hill? && !loc.ant?
+    !loc.water? && !loc.food? && !loc.hill? && !loc.ant? && !loc.hill?
   end
 
   def planed_location?(loc, directions)
@@ -77,6 +86,10 @@ class AazBotAi
 
   def foods(ai)
     ai.map.flatten.select(&:food?)
+  end
+
+  def my_ants_in_hill(ai)
+    ai.my_ants.select { |ant| ant.square.hill? }
   end
 
   def distance(loc1, loc2)
