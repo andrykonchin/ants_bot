@@ -3,13 +3,12 @@ require 'ants.rb'
 require 'aaz_bot_ai.rb'
 
 ai=AI.new
-bot_ai = AazBotAi.new
+aaz_bot = AazBotAi.new(ai)
 
 ai.setup do |ai|
-	# your setup code here, if any
+  aaz_bot.setup
 end
 
 ai.run do |ai|
-	# your turn code here
-  bot_ai.next_step(ai)
+  aaz_bot.next_step
 end

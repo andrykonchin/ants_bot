@@ -141,12 +141,13 @@ class AI
 	# Zero-turn logic. 
 	def setup # :yields: self
 		read_intro
+		@map=Array.new(@rows){|row| Array.new(@cols){|col| Square.new false, false, false, nil, row, col, self } }
+
 		yield self
 		
 		@stdout.puts 'go'
 		@stdout.flush
 		
-		@map=Array.new(@rows){|row| Array.new(@cols){|col| Square.new false, false, false, nil, row, col, self } }
 		@did_setup=true
 	end
 	
