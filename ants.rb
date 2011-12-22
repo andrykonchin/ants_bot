@@ -2,8 +2,16 @@
 # by Matma Rex (matma.rex@gmail.com)
 # Released under CC-BY 3.0 license
 
+module Utils
+  def distance(loc1, loc2)
+    Math.hypot(loc1.col - loc2.col, loc1.row - loc2.row)
+  end
+end
+
 # Represents a single ant.
 class Ant
+  include Utils
+
 	# Owner of this ant. If it's 0, it's your ant.
 	attr_accessor :owner
 	# Square this ant sits on.
@@ -35,6 +43,14 @@ class Ant
 		@ai.order self, direction
 	end
 
+  def see?(loc)
+    distance(@square, loc) <= @ai.viewradius
+  end
+
+  def towards(dir)
+    @square.neighbor dir
+  end
+
   def inspect
     "Col #{@square.col}, Row #{@square.row}"
   end
@@ -63,6 +79,9 @@ class Square
 	def food?; @food; end
 	# Returns owner number if this square is a hill, false if not
 	def hill?; @hill; end
+
+  def my_hill?; @hill && @hill == 0; end
+  def enemy_hill?; @hill && @hill != 0; end
 	# Returns true if this square has an alive ant.
 	def ant?; @ant and @ant.alive?; end;
 	
@@ -85,6 +104,10 @@ class Square
 		
 		return @ai.map[row][col]
 	end
+
+  def occupied?
+    water? || food? || ant? || my_hill?
+  end
 
   def inspect
     "Col #{@col}, Row #{@row}"
@@ -285,6 +308,19 @@ class AI
 	def my_ants; @my_ants; end
 	# Returns an array of alive enemy ants on the gamefield.
 	def enemy_ants; @enemy_ants; end
+
+
+  def foods
+    @map.flatten.select(&:food?)
+  end
+
+  def enemy_hills
+    @map.flatten.select { |square| square.hill? && !square.my_hill? }
+  end
+
+  def my_ants_in_hill
+    self.my_ants.select { |ant| ant.square.hill? }
+  end
 	
 	# If row or col are greater than or equal map width/height, makes them fit the map.
 	#

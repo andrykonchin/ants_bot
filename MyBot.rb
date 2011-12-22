@@ -3,10 +3,10 @@ require 'ants.rb'
 require 'aaz_bot_ai.rb'
 
 ai=AI.new
-aaz_bot = AazBotAi.new(ai)
+aaz_bot = AazBotAi.new
 
 ai.setup do |ai|
-  aaz_bot.setup
+  aaz_bot.setup ai
 end
 
 ai.run do |ai|

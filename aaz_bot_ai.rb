@@ -2,27 +2,16 @@ require 'rubygems'
 require 'logger'
 
 class AazBotAi
+  include Utils
 
-  class Location
-    attr_accessor :row, :col
-
-    def initialize(coord)
-      @col = coord[:col]
-      @row = coord[:row]
-    end
-  end
-
-  def initialize(ai)
-    @ai = ai
+  def initialize
     @logger = Logger.new('aaz_bot.log')
   end
 
-  def setup
+  def setup(ai)
+    @ai = ai
     @unseen = @ai.map.flatten
     @enemy_hills = []
-
-    @logger.info "setup >>>>>>>>"
-    @logger.debug @unseen.inspect
   end
 
   def next_step
@@ -34,56 +23,54 @@ class AazBotAi
   def next_directions
     {}.tap do |directions|
       # gathering food
-      distances = []
-      foods.each do |food|
-        distances.concat @ai.my_ants.map { |ant| { :dist => distance(ant, food), :target => food, :ant => ant } }
-      end
-
-      aimed_food = do_location(distances, directions)
+      s_food = FoodGatheringStrategy.new(@ai)
+      s_food.update_directions(directions)
+      aimed_food = s_food.aimed_food
 
       # enemy hills
-      @enemy_hills.concat(seen_enemy_hills).uniq!
+      update_enemy_hills
 
-      hills_distances = []
-      free_ants = @ai.my_ants - directions.keys
-      @enemy_hills.each do |hill|
-        hills_distances.concat free_ants.map { |ant| { :dist => distance(ant, hill), :target => hill, :ant => ant } }
-      end
-
-      sorted_distances = hills_distances.sort_by { |el| el[:dist] }
-      sorted_distances.each do |move|
-        ant = move[:ant]
-        hill = move[:target]
-
-        if !directions.keys.include?(ant)
-          directions_for(ant, hill).each do |dir|
-            if try_to_occupied(ant, dir, directions)
-              break
-            end
-          end
-        end
-      end
+      s_hills = EnemyHillsStrategy.new(@ai, @enemy_hills)
+      s_hills.update_directions(directions)
 
       # explore unseen locations
       update_unseen
-      free_ants = @ai.my_ants - directions.keys
-      unseen_distances = []
-      free_ants.each do |ant|
-        unseen_distances.concat @unseen.map { |square| { :dist => distance(ant, square), :ant => ant, :target => square } }
-      end
 
-      do_location(unseen_distances, directions)
+      s_locations = ExploreLocationsStrategy.new(@ai, @unseen)
+      s_locations.update_directions(directions)
 
       # not blocking hills
-      my_ants_in_hill.each do |ant|
-        unless aimed_food.values.include?(ant)
-          [:N, :S, :W, :E].each do |dir|
-            if try_to_occupied(ant, dir, directions)
-              break
-            end
-          end
-        end
-      end
+      s_blocking = NotBlockingHillStrategy.new(@ai, aimed_food)
+      s_blocking.update_directions(directions)
+    end
+  end
+
+  def move_ants_to(directions)
+    directions.each do |ant, dir|
+      ant.order dir
+    end
+  end
+
+  def update_enemy_hills
+    @enemy_hills.concat(@ai.enemy_hills).uniq!
+  end
+
+  def update_unseen
+    @unseen.delete_if do |square|
+      @ai.my_ants.any? { |ant| ant.see? square }
+    end
+  end
+end
+
+class Strategy
+  include Utils
+
+  def directions_for(ant, food)
+    [].tap do |result|
+      result << :N if ant.row > food.row
+      result << :S if ant.row < food.row
+      result << :W if ant.col > food.col
+      result << :E if ant.col < food.col
     end
   end
 
@@ -107,64 +94,96 @@ class AazBotAi
   end
 
   def try_to_occupied(ant, dir, directions)
-    loc = next_location(ant, dir)
-    if unoccupied_location?(loc) && !planed_location?(loc, directions)
+    loc = ant.towards(dir)
+    unless loc.occupied? || planed_location?(loc, directions)
       directions[ant] = dir
       return true
     end
     false
   end
 
-  def move_ants_to(directions)
-    directions.each do |ant, dir|
-      ant.order dir
-    end
-  end
-
-  def unoccupied_location?(loc)
-    !loc.water? && !loc.food? && !loc.ant? && (!loc.hill? || loc.hill != 0)
-  end
-
   def planed_location?(loc, directions)
-    directions.map { |a, d| next_location(a, d) }.include?(loc)
+    directions.map { |ant, dir| ant.towards(dir) }.include?(loc)
   end
 
-  def next_location(ant, dir)
-    ant.square.neighbor(dir)
-  end
-
-  def foods
-    @ai.map.flatten.select(&:food?)
-  end
-
-  def my_ants_in_hill
-    @ai.my_ants.select { |ant| ant.square.hill? }
-  end
-
-  def distance(loc1, loc2)
-    Math.hypot(loc1.col - loc2.col, loc1.row - loc2.row)
-  end
-
-  def directions_for(ant, food)
-    [].tap do |result|
-      result << :N if ant.row > food.row
-      result << :S if ant.row < food.row
-      result << :W if ant.col > food.col
-      result << :E if ant.col < food.col
+  def build_distances(ants, targets)
+    [].tap do |distances|
+      ants.each do |ant|
+        distances.concat targets.map { |target| { :dist => distance(ant, target), :target => target, :ant => ant } }
+      end
     end
   end
+end
 
-  def location_visible_from?(from, location)
-    distance(from, location) <= @ai.viewradius
+class FoodGatheringStrategy < Strategy
+  attr_reader :aimed_food
+
+  def initialize(ai)
+    @ai = ai
   end
 
-  def update_unseen
-    @unseen.delete_if do |square|
-      @ai.my_ants.any? { |ant| location_visible_from?(ant, square) }
+  def update_directions(directions)
+    distances = build_distances(@ai.my_ants, @ai.foods)
+    @aimed_food = do_location(distances, directions)
+    directions
+  end
+end
+
+class EnemyHillsStrategy < Strategy
+  def initialize(ai, enemy_hills)
+    @ai = ai
+    @enemy_hills = enemy_hills
+  end
+
+  def update_directions(directions)
+    free_ants = @ai.my_ants - directions.keys
+    hills_distances = build_distances(free_ants, @enemy_hills)
+
+    sorted_distances = hills_distances.sort_by { |el| el[:dist] }
+    sorted_distances.each do |move|
+      ant = move[:ant]
+      hill = move[:target]
+
+      if !directions.keys.include?(ant)
+        directions_for(ant, hill).each do |dir|
+          if try_to_occupied(ant, dir, directions)
+            break
+          end
+        end
+      end
     end
   end
+end
 
-  def seen_enemy_hills
-    @ai.map.flatten.select { |square| square.hill? && square.hill != 0 }
+class ExploreLocationsStrategy < Strategy
+  def initialize(ai, unseen)
+    @ai = ai
+    @unseen = unseen
+  end
+
+  def update_directions(directions)
+    free_ants = @ai.my_ants - directions.keys
+    unseen_distances = build_distances(free_ants, @unseen)
+
+    do_location(unseen_distances, directions)
+  end
+end
+
+class NotBlockingHillStrategy < Strategy
+  def initialize(ai, aimed_food)
+    @ai = ai
+    @aimed_food = aimed_food
+  end
+
+  def update_directions(directions)
+    @ai.my_ants_in_hill.each do |ant|
+      unless @aimed_food.values.include?(ant)
+        [:N, :S, :W, :E].each do |dir|
+          if try_to_occupied(ant, dir, directions)
+            break
+          end
+        end
+      end
+    end
   end
 end
