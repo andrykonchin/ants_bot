@@ -19,6 +19,8 @@ class AazBotAi
 
   def setup
     @unseen = @ai.map.flatten
+    @enemy_hills = []
+
     @logger.info "setup >>>>>>>>"
     @logger.debug @unseen.inspect
   end
@@ -38,6 +40,29 @@ class AazBotAi
       end
 
       aimed_food = do_location(distances, directions)
+
+      # enemy hills
+      @enemy_hills.concat(seen_enemy_hills).uniq!
+
+      hills_distances = []
+      free_ants = @ai.my_ants - directions.keys
+      @enemy_hills.each do |hill|
+        hills_distances.concat free_ants.map { |ant| { :dist => distance(ant, hill), :target => hill, :ant => ant } }
+      end
+
+      sorted_distances = hills_distances.sort_by { |el| el[:dist] }
+      sorted_distances.each do |move|
+        ant = move[:ant]
+        hill = move[:target]
+
+        if !directions.keys.include?(ant)
+          directions_for(ant, hill).each do |dir|
+            if try_to_occupied(ant, dir, directions)
+              break
+            end
+          end
+        end
+      end
 
       # explore unseen locations
       update_unseen
@@ -97,7 +122,7 @@ class AazBotAi
   end
 
   def unoccupied_location?(loc)
-    !loc.water? && !loc.food? && !loc.hill? && !loc.ant? && !loc.hill?
+    !loc.water? && !loc.food? && !loc.ant? && (!loc.hill? || loc.hill != 0)
   end
 
   def planed_location?(loc, directions)
@@ -137,5 +162,9 @@ class AazBotAi
     @unseen.delete_if do |square|
       @ai.my_ants.any? { |ant| location_visible_from?(ant, square) }
     end
+  end
+
+  def seen_enemy_hills
+    @ai.map.flatten.select { |square| square.hill? && square.hill != 0 }
   end
 end
